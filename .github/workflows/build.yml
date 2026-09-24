@@ -1,0 +1,66 @@
+name: Build AnyPS5
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows / MinGW
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            make
+            cmake
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-make
+
+      - name: Show toolchain
+        run: |
+          gcc --version
+          g++ --version
+          cmake --version
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --parallel
+
+      - name: Package build
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifact | Out-Null
+          Copy-Item build/core/relinker/relinker.exe artifact/ -ErrorAction SilentlyContinue
+          Copy-Item build/core/libs/nid_patcher.exe artifact/ -ErrorAction SilentlyContinue
+          Copy-Item build/core/libs/libs/*.prx artifact/ -ErrorAction SilentlyContinue
+          if (-not (Get-ChildItem artifact -Recurse -File)) {
+            Write-Error "No build artifacts were found."
+          }
+
+      - name: Upload AnyPS5 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyPS5-windows
+          path: artifact
+          if-no-files-found: error
